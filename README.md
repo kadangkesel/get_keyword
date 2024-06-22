@@ -1,4 +1,6 @@
 # GetKey{word}
+![getkeyword](https://github.com/kadangkesel/get_keyword/assets/35873960/ecdc3496-bfe4-42c4-a707-96bb2d1fa748)
+
 
 GetKey{word} is a desktop application that uses Google Generative AI to generate short descriptions and relevant tags for selected images. 
 This application also edits the image metadata to include the generated descriptions and tags.
