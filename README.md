@@ -18,28 +18,46 @@ Ensure you have the following prerequisites installed before running this applic
 
 ## Installation
 
-1. Clone this repository to your local machine:
+1. Clone this repository to your terminal:
+```bash
+git clone https://github.com/kadangkesel/get_keyword.git
+```
+and then
+```bash
+cd get_keyword
+```
 
-   ```bash
-   git clone https://github.com/kadangkesel/get_keyword.git
-   ```
-   and then
-   ```bash
-   cd get_keyword
-   ```
-   
 2. Create and activate a virtual environment (optional but recommended):
+```bash
+python -m venv venv
+source venv/bin/activate   # On Windows use `venv\Scripts\activate`
+```
 
-   ```bash
-   python -m venv venv
-   source venv/bin/activate   # On Windows use `venv\Scripts\activate`
-    ```
-3.Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4.Run the application:
+3. Install the required dependencies:
+```bash
+pip install -r requirements.txt
+```
 
-  ```bash
-  python main.py
-   ```
+4. Run the application:
+```bash
+python app.py
+```
+
+## In the application window, do the following:
+
+1. Click "Select Directory" and choose the directory containing the images you want to process.
+2. Enter your Gemini AI API Key
+3. Click the "Start" button to begin processing the images.
+4. Once complete, the image metadata will be updated with the generated descriptions and tags.
+
+## License
+This project is licensed under the MIT License. See the LICENSE file for more information.
+
+## Contact
+If you have any questions or suggestions, feel free to contact me via:
+
+Instagram: hadiyuli_
+
+PayPal: KadangKesel
+
+GitHub: kadangkesel
