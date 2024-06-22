@@ -15,6 +15,7 @@ This application also edits the image metadata to include the generated descript
 
 Ensure you have the following prerequisites installed before running this application:
 
+- Git 
 - Python 3.6 or higher
 - Pip (Python Package Installer)
 
