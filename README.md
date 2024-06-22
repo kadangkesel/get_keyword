@@ -57,7 +57,5 @@ This project is licensed under the MIT License. See the LICENSE file for more in
 If you have any questions or suggestions, feel free to contact me via:
 
 Instagram: hadiyuli_
-
 PayPal: KadangKesel
-
 GitHub: kadangkesel
