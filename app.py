@@ -17,15 +17,14 @@ generation_config = {
     "max_output_tokens": 8192,
     "response_mime_type": "text/plain",
 }
-
-model_options = ["gemini-1.5-flash", "gemini-1.5-pro"]  # List of available models
+model_options = ["gemini-1.5-flash", "gemini-1.5-pro"]  
 
 def split_text(text, max_length):
     parts = text.split(',')
     result = []
     current = ''
     for part in parts:
-        if len(current) + len(part) + 1 <= max_length:  
+        if len(current) + len(part) + 1 <= max_length:
             if current:
                 current += ',' + part
             else:
@@ -38,12 +37,19 @@ def split_text(text, max_length):
     return result
 
 def check_metadata(image_path):
-    with exiftool.ExifToolHelper() as et:
-        metadata = et.get_metadata(image_path)
-        title = metadata.get('-Title', '')
-        keywords = metadata.get('-Keywords', '')
-
-    return not title or not keywords
+    if image_path.lower().endswith('.jpg') or image_path.lower().endswith('.jpeg'):
+        with exiftool.ExifToolHelper() as et:
+            metadata = et.get_metadata(image_path)
+            title = metadata.get('XMP-dc:Title', '')
+            keywords = metadata.get('XMP-dc:Subject', '')
+        return not title or not keywords
+    elif image_path.lower().endswith('.png'):
+        img = Image.open(image_path)
+        metadata = img.info
+        title = metadata.get('Title', '')
+        keywords = metadata.get('Keywords', '')
+        return not title or not keywords
+    return True
 
 def process_images(api_key):
     global model, directory_path, output_directory
@@ -58,10 +64,9 @@ def process_images(api_key):
         return
 
     genai.configure(api_key=api_key)
-    model_name = selected_model.get()  # Get the selected model from the dropdown
+    model_name = selected_model.get()
     model = genai.GenerativeModel(model_name=model_name)
 
-    # Get the temperature value from the slider
     temperature_value = temperature_slider.get()
     generation_config["temperature"] = temperature_value
 
@@ -78,20 +83,18 @@ def process_images(api_key):
                 move_file(image_path, output_directory)
             except Exception as e:
                 error_message = str(e)
-                print(f"Error processing file, try to load again")
+                print(f"Processing file...")
                 failed_files.append(image_path)
                 continue
 
-        # Retry failed files
         for image_path in failed_files:
             try:
                 process_image(image_path)
                 move_file(image_path, output_directory)
             except Exception as e:
                 error_message = str(e)
-                print(f"Failed to process file, Limit Quota")
+                print(f"Failed to process file, Limit quota")
 
-        # Check and reprocess files with empty metadata
         for image_path in files:
             if check_metadata(image_path):
                 try:
@@ -111,28 +114,55 @@ def process_images(api_key):
 
 def process_image(image_path):
     img = Image.open(image_path)
+    rename_result = model.generate_content(["get a title for the image", img])
     title_result = model.generate_content(["get a short description for the image", img])
     tags_result = model.generate_content(["get relevant tags delimited by comma, not hashtags, for the images", img])
 
     max_length = 64
     tags_split = split_text(tags_result.text, max_length)
 
-    with exiftool.ExifTool() as et:
-        commands = ["-overwrite_original", f'-Title={title_result.text}']
+    if image_path.lower().endswith('.jpg') or image_path.lower().endswith('.jpeg') or image_path.lower().endswith('.png'):
+        commands = ["-overwrite_original", f'-XMP-dc:Title={title_result.text}', f'-XMP-dc:Description={title_result.text}']
         for i, part in enumerate(tags_split):
-            commands.append(f'-Keywords={part}')
+            commands.append(f'-XMP-dc:Subject={part}')
 
         commands.append(image_path)
+
         try:
-            et.execute(*commands)
-        except exiftool.ExifToolExecuteError as e:
+            with exiftool.ExifTool() as et:
+                et.execute(*commands)
+        except exiftool.exceptions.ExifToolExecuteError as e:
             print(f"ExifTool error: {e}")
             raise
+
+    if rename_enabled.get():
+        new_filename = f"{rename_result.text}{os.path.splitext(image_path)[1]}"
+        new_path = os.path.join(output_directory, new_filename)
+
+        if os.path.exists(new_path):
+            base_filename, extension = os.path.splitext(new_filename)
+            counter = 1
+            while os.path.exists(new_path):
+                new_filename = f"{base_filename}_{counter}{extension}"
+                new_path = os.path.join(output_directory, new_filename)
+                counter += 1
+
+        os.rename(image_path, new_path)
+
+def get_unique_filename(directory, filename):
+    base, ext = os.path.splitext(filename)
+    counter = 1
+    new_filename = filename
+    while os.path.exists(os.path.join(directory, new_filename)):
+        new_filename = f"{base}_{counter}{ext}"
+        counter += 1
+    return new_filename
 
 def move_file(file_path, target_directory):
     if not os.path.exists(target_directory):
         os.makedirs(target_directory)
-    shutil.move(file_path, os.path.join(target_directory, os.path.basename(file_path)))
+    unique_filename = get_unique_filename(target_directory, os.path.basename(file_path))
+    shutil.move(file_path, os.path.join(target_directory, unique_filename))
 
 def select_directory(dir_label):
     global directory_path
@@ -152,9 +182,9 @@ ctk.deactivate_automatic_dpi_awareness()
 
 root = ctk.CTk()
 root.title("Get Keyword")
-root.geometry("670x900") 
+root.geometry("670x950") 
 
-selected_model = tk.StringVar(value=model_options[0])  # Default model selection
+selected_model = tk.StringVar(value=model_options[0]) 
 
 def customize_label(label, text, font_size=45, pady=10, anchor="center"):
     label.configure(text=text, font=("Segoe UI Bold", font_size), fg_color="transparent", text_color='#6ccc4f') 
@@ -210,13 +240,21 @@ customize_button(output_button, "Select Output Directory", command=lambda: selec
 output_label = ctk.CTkLabel(output_directory_frame)
 customize_main_label(output_label, "No output directory selected")
 
+rename_enabled = tk.BooleanVar(value=False)
+
+rename_checkbox_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+rename_checkbox_frame.pack(pady=10, anchor="center")
+
+rename_checkbox = ctk.CTkCheckBox(rename_checkbox_frame, text="Enable Rename", variable=rename_enabled,checkbox_width=14,checkbox_height=14,border_width=1,corner_radius=3,font=("Segoe UI Bold", 14),                              
+                                  fg_color="#6ccc4f")
+rename_checkbox.pack(anchor="center")
+
 label_2 = ctk.CTkLabel(header_frame, pady=(20))
 customize_main_label(label_2, "© 2024 Kadang_Kesel", font_size=9)
 
 frame = ctk.CTkFrame(root, fg_color="transparent")
 frame.pack(padx=10, pady=30, anchor="center")
 
-# Create a frame for model selection and temperature slider, and pack it in a horizontal layout
 model_temperature_frame = ctk.CTkFrame(frame, fg_color="transparent")
 model_temperature_frame.pack(pady=10, padx=10, anchor="center")
 
@@ -226,26 +264,22 @@ model_frame.pack(side="left", padx=50)
 temperature_frame = ctk.CTkFrame(model_temperature_frame, fg_color="transparent")
 temperature_frame.pack(side="left", padx=10, pady=0)
 
-# Move this code block to the new model frame
 model_selection_label = ctk.CTkLabel(model_frame, text="Select Model:", font=("Segoe UI Bold", 14))
 model_selection_label.pack(pady=0,padx=(0,100), anchor="center")
 
 model_dropdown = ctk.CTkComboBox(model_frame, values=model_options, variable=selected_model,border_color="#6ccc4f",fg_color="#1d3815",button_color="#6ccc4f",button_hover_color="#1d560c")
 model_dropdown.pack(pady=20, padx=(0,100), anchor="center")
 
-# Move this code block to the new temperature frame
 temperature_label = ctk.CTkLabel(temperature_frame, text="Select Temperature:", font=("Segoe UI Bold", 14))
 temperature_label.pack(pady=10, anchor="center")
 
 temperature_slider = ctk.CTkSlider(temperature_frame, from_=0.0, to=1.0, number_of_steps=100,button_hover_color="#1d560c", fg_color="#1d3815",progress_color="#538f40",button_color="#6ccc4f")
-temperature_slider.set(0.7)  # Set default value to 0.7
+temperature_slider.set(0.7) 
 temperature_slider.pack(pady=10, anchor="center")
 
-# Add a label to display the temperature value in the new temperature frame
 temperature_value_label = ctk.CTkLabel(temperature_frame, text=f"Temperature: {temperature_slider.get():.2f}", font=("Segoe UI Bold", 12))
 temperature_value_label.pack(pady=1, anchor="center")
 
-# Update the temperature value label in real-time
 def update_temperature_label(value):
     temperature_value_label.configure(text=f"Temperature: {float(value):.2f}")
 
