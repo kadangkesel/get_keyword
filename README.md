@@ -49,9 +49,10 @@ python app.py
 ## In the application window, do the following:
 
 1. Click "Select Directory" and choose the directory containing the images you want to process.
-2. Enter your Gemini AI API Key
-3. Click the "Start" button to begin processing the images.
-4. Once complete, the image metadata will be updated with the generated descriptions and tags.
+2. Click "Select Output Directory" and choose the output directory 
+3. Enter your Gemini AI API Key
+4. Click the "Start" button to begin processing the images.
+5. Once complete, the image metadata will be updated with the generated descriptions and tags.
 
 ## License
 This project is licensed under the MIT License. See the LICENSE file for more information.
