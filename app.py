@@ -18,6 +18,8 @@ generation_config = {
     "response_mime_type": "text/plain",
 }
 
+model_options = ["gemini-1.5-flash", "gemini-1.5-pro"]  # List of available models
+
 def split_text(text, max_length):
     parts = text.split(',')
     result = []
@@ -56,7 +58,12 @@ def process_images(api_key):
         return
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+    model_name = selected_model.get()  # Get the selected model from the dropdown
+    model = genai.GenerativeModel(model_name=model_name)
+
+    # Get the temperature value from the slider
+    temperature_value = temperature_slider.get()
+    generation_config["temperature"] = temperature_value
 
     try:
         if not os.path.exists(output_directory):
@@ -99,12 +106,11 @@ def process_images(api_key):
     
     except Exception as e:
         error_message = str(e)
-        print(f"Some files are not processed, please retry")
+        print(f"Maybe some files are not processed, you can try again")
         messagebox.showinfo("Info", f"Processing complete.\nmaybe some files are not processed, you can try again")
 
 def process_image(image_path):
     img = Image.open(image_path)
-    rename_result = model.generate_content(["get a title for the image", img])
     title_result = model.generate_content(["get a short description for the image", img])
     tags_result = model.generate_content(["get relevant tags delimited by comma, not hashtags, for the images", img])
 
@@ -146,7 +152,9 @@ ctk.deactivate_automatic_dpi_awareness()
 
 root = ctk.CTk()
 root.title("Get Keyword")
-root.geometry("680x768") 
+root.geometry("670x900") 
+
+selected_model = tk.StringVar(value=model_options[0])  # Default model selection
 
 def customize_label(label, text, font_size=45, pady=10, anchor="center"):
     label.configure(text=text, font=("Segoe UI Bold", font_size), fg_color="transparent", text_color='#6ccc4f') 
@@ -206,7 +214,42 @@ label_2 = ctk.CTkLabel(header_frame, pady=(20))
 customize_main_label(label_2, "© 2024 Kadang_Kesel", font_size=9)
 
 frame = ctk.CTkFrame(root, fg_color="transparent")
-frame.pack(padx=100, pady=30, anchor="center")
+frame.pack(padx=10, pady=30, anchor="center")
+
+# Create a frame for model selection and temperature slider, and pack it in a horizontal layout
+model_temperature_frame = ctk.CTkFrame(frame, fg_color="transparent")
+model_temperature_frame.pack(pady=10, padx=10, anchor="center")
+
+model_frame = ctk.CTkFrame(model_temperature_frame, fg_color="transparent")
+model_frame.pack(side="left", padx=50)
+
+temperature_frame = ctk.CTkFrame(model_temperature_frame, fg_color="transparent")
+temperature_frame.pack(side="left", padx=10, pady=0)
+
+# Move this code block to the new model frame
+model_selection_label = ctk.CTkLabel(model_frame, text="Select Model:", font=("Segoe UI Bold", 14))
+model_selection_label.pack(pady=0,padx=(0,100), anchor="center")
+
+model_dropdown = ctk.CTkComboBox(model_frame, values=model_options, variable=selected_model,border_color="#6ccc4f",fg_color="#1d3815",button_color="#6ccc4f",button_hover_color="#1d560c")
+model_dropdown.pack(pady=20, padx=(0,100), anchor="center")
+
+# Move this code block to the new temperature frame
+temperature_label = ctk.CTkLabel(temperature_frame, text="Select Temperature:", font=("Segoe UI Bold", 14))
+temperature_label.pack(pady=10, anchor="center")
+
+temperature_slider = ctk.CTkSlider(temperature_frame, from_=0.0, to=1.0, number_of_steps=100,button_hover_color="#1d560c", fg_color="#1d3815",progress_color="#538f40",button_color="#6ccc4f")
+temperature_slider.set(0.7)  # Set default value to 0.7
+temperature_slider.pack(pady=10, anchor="center")
+
+# Add a label to display the temperature value in the new temperature frame
+temperature_value_label = ctk.CTkLabel(temperature_frame, text=f"Temperature: {temperature_slider.get():.2f}", font=("Segoe UI Bold", 12))
+temperature_value_label.pack(pady=1, anchor="center")
+
+# Update the temperature value label in real-time
+def update_temperature_label(value):
+    temperature_value_label.configure(text=f"Temperature: {float(value):.2f}")
+
+temperature_slider.configure(command=update_temperature_label)
 
 customize_main_label(ctk.CTkLabel(frame), "Enter your Gemini API key:", font_size=14)
 
@@ -231,7 +274,7 @@ instagram_logo_path = r'.\assets\instagram.png'
 paypal_logo_path = r'.\assets\paypal.png'
 github_logo_path = r'.\assets\github.png'
 
-instagram_button = ctk.CTkButton(social_frame,border_color="white", fg_color="transparent", hover_color="#eeeeee", border_width=0.6, corner_radius=8, image=ctk.CTkImage(Image.open(instagram_logo_path)), text="", width=32, height=32, command=lambda: open_url("https://www.instagram.com/hadiyuli_"))
+instagram_button = ctk.CTkButton(social_frame,border_color="white", fg_color="transparent", hover_color="#eeeeee", border_width=1, corner_radius=8, image=ctk.CTkImage(Image.open(instagram_logo_path)), text="", width=32, height=32, command=lambda: open_url("https://www.instagram.com/hadiyuli_"))
 instagram_button.pack(side="left", padx=10)
 
 paypal_button = ctk.CTkButton(social_frame,border_color="white", fg_color="transparent", hover_color="#eeeeee", border_width=1, corner_radius=8, image=ctk.CTkImage(Image.open(paypal_logo_path)), text="", width=32, height=32, command=lambda: open_url("paypal.me/KadangKesel"))
