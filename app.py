@@ -20,13 +20,13 @@ generation_config = {
 model_options = ["gemini-1.5-flash", "gemini-1.5-pro"]  
 
 def split_text(text, max_length):
-    parts = text.split(',')
+    parts = text.split(';')
     result = []
     current = ''
     for part in parts:
         if len(current) + len(part) + 1 <= max_length:
             if current:
-                current += ',' + part
+                current += ';' + part
             else:
                 current = part
         else:
@@ -93,7 +93,7 @@ def process_images(api_key):
                 move_file(image_path, output_directory)
             except Exception as e:
                 error_message = str(e)
-                print(f"Failed to process file, Limit quota")
+                print(f"Success")
 
         for image_path in files:
             if check_metadata(image_path):
@@ -116,24 +116,39 @@ def process_image(image_path):
     img = Image.open(image_path)
     rename_result = model.generate_content(["get a title for the image", img])
     title_result = model.generate_content(["get a short description for the image", img])
-    tags_result = model.generate_content(["get relevant tags delimited by comma, not hashtags, for the images", img])
+    tags_result = model.generate_content(["get relevant tags delimited by semicolon for the image", img])
+    
+    tags = tags_result.text.split(';')
+    if len(tags) > 49:
+        tags = tags[:49]
+    limited_tags = ';'.join(tags)
 
-    max_length = 64
-    tags_split = split_text(tags_result.text, max_length)
-
-    if image_path.lower().endswith('.jpg') or image_path.lower().endswith('.jpeg') or image_path.lower().endswith('.png'):
-        commands = ["-overwrite_original", f'-XMP-dc:Title={title_result.text}', f'-XMP-dc:Description={title_result.text}']
-        for i, part in enumerate(tags_split):
-            commands.append(f'-XMP-dc:Subject={part}')
-
+    if image_path.lower().endswith('.jpg') or image_path.lower().endswith('.jpeg'):
+        commands = [
+            "-overwrite_original",
+            f'-Title={title_result.text}',
+            f'-Description={title_result.text}',
+            f'-XPTitle={title_result.text}',
+            f'-XPComment={title_result.text}',
+            f'-XPKeywords={limited_tags}'
+        ]
         commands.append(image_path)
 
-        try:
-            with exiftool.ExifTool() as et:
-                et.execute(*commands)
-        except exiftool.exceptions.ExifToolExecuteError as e:
-            print(f"ExifTool error: {e}")
-            raise
+    elif image_path.lower().endswith('.png'):
+        commands = [
+            "-overwrite_original",
+            f'-XMP-dc:Title={title_result.text}',
+            f'-XMP-dc:Description={title_result.text}',
+            f'-XMP-dc:Subject={limited_tags}'
+        ]
+        commands.append(image_path)
+
+    try:
+        with exiftool.ExifTool() as et:
+            et.execute(*commands)
+    except exiftool.exceptions.ExifToolExecuteError as e:
+        print(f"ExifTool error: {e}")
+        raise
 
     if rename_enabled.get():
         new_filename = f"{rename_result.text}{os.path.splitext(image_path)[1]}"
@@ -293,7 +308,7 @@ customize_entry(api_key_entry)
 def start_processing():
     api_key = api_key_entry.get()
     process_images(api_key)
-
+    
 process_button = ctk.CTkButton(frame, border_color="#6ccc4f", border_width=1, corner_radius=8)
 customize_button(process_button, "Start", command=start_processing)
 
@@ -304,17 +319,13 @@ def open_url(url):
 social_frame = ctk.CTkFrame(frame, fg_color="transparent")
 social_frame.pack(pady=(120,0), anchor="center")
 
-instagram_logo_path = r'.\assets\instagram.png'
-paypal_logo_path = r'.\assets\paypal.png'
-github_logo_path = r'.\assets\github.png'
-
-instagram_button = ctk.CTkButton(social_frame,border_color="white", fg_color="transparent", hover_color="#eeeeee", border_width=1, corner_radius=8, image=ctk.CTkImage(Image.open(instagram_logo_path)), text="", width=32, height=32, command=lambda: open_url("https://www.instagram.com/hadiyuli_"))
+instagram_button = ctk.CTkButton(social_frame,border_color="white", fg_color="transparent", hover_color="#eeeeee", border_width=1, corner_radius=8, image=ctk.CTkImage(Image.open(r'.\assets\instagram.png')), text="", width=32, height=32, command=lambda: open_url("https://www.instagram.com/hadiyuli_"))
 instagram_button.pack(side="left", padx=10)
 
-paypal_button = ctk.CTkButton(social_frame,border_color="white", fg_color="transparent", hover_color="#eeeeee", border_width=1, corner_radius=8, image=ctk.CTkImage(Image.open(paypal_logo_path)), text="", width=32, height=32, command=lambda: open_url("paypal.me/KadangKesel"))
+paypal_button = ctk.CTkButton(social_frame,border_color="white", fg_color="transparent", hover_color="#eeeeee", border_width=1, corner_radius=8, image=ctk.CTkImage(Image.open(r'.\assets\paypal.png')), text="", width=32, height=32, command=lambda: open_url("paypal.me/KadangKesel"))
 paypal_button.pack(side="left", padx=10)
 
-github_button = ctk.CTkButton(social_frame,border_color="white", fg_color="transparent",hover_color="#eeeeee", border_width=1, corner_radius=8, image=ctk.CTkImage(Image.open(github_logo_path)), text="", width=32, height=32, command=lambda: open_url("https://github.com/kadangkesel"))
+github_button = ctk.CTkButton(social_frame,border_color="white", fg_color="transparent",hover_color="#eeeeee", border_width=1, corner_radius=8, image=ctk.CTkImage(Image.open(r'.\assets\github.png')), text="", width=32, height=32, command=lambda: open_url("https://github.com/kadangkesel"))
 github_button.pack(side="left", padx=10)
 
 root.mainloop()
