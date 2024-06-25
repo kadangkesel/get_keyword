@@ -6,6 +6,7 @@ from PIL import Image
 import exiftool
 import google.generativeai as genai
 import customtkinter as ctk
+import csv
 
 model = None
 directory_path = ""
@@ -17,23 +18,21 @@ generation_config = {
     "max_output_tokens": 8192,
     "response_mime_type": "text/plain",
 }
-model_options = ["gemini-1.5-flash", "gemini-1.5-pro"]  
+model_options = ["gemini-1.5-flash", "gemini-1.5-pro"]
+csv_file_path = ""
 
 def split_text(text, max_length):
     parts = text.split(';')
     result = []
-    current = ''
     for part in parts:
-        if len(current) + len(part) + 1 <= max_length:
-            if current:
-                current += ';' + part
-            else:
-                current = part
+        part = part.strip() 
+        if len(part) <= max_length:
+            result.append(part)
         else:
-            result.append(current)
-            current = part
-    if current:
-        result.append(current)
+            while len(part) > max_length:
+                result.append(part[:max_length])
+                part = part[max_length:]
+            result.append(part)
     return result
 
 def check_metadata(image_path):
@@ -50,6 +49,16 @@ def check_metadata(image_path):
         keywords = metadata.get('Keywords', '')
         return not title or not keywords
     return True
+
+def export_metadata_to_csv(image_path, title, description, keywords):
+    global csv_file_path
+    file_exists = os.path.isfile(csv_file_path)
+    with open(csv_file_path, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        if not file_exists:
+            writer.writerow(["Filename", "Title", "Description", "Keywords", "Category", "Release"])  # Write header
+        writer.writerow([image_path, title, description, keywords])
+
 
 def process_images(api_key):
     global model, directory_path, output_directory
@@ -92,7 +101,7 @@ def process_images(api_key):
                 process_image(image_path)
                 move_file(image_path, output_directory)
             except Exception as e:
-                error_message = str(e)
+                error_message = str(e) #For Debugging 
                 print(f"Success")
 
         for image_path in files:
@@ -102,47 +111,77 @@ def process_images(api_key):
                     move_file(image_path, output_directory)
                 except Exception as e:
                     error_message = str(e)
-                    print(f"Checking metadata, and try to load again")
+                    print(f"Checking metadata...")
 
         print("Processing complete.")
         messagebox.showinfo("Info", "Processing complete.")
     
     except Exception as e:
         error_message = str(e)
-        print(f"Maybe some files are not processed, you can try again")
-        messagebox.showinfo("Info", f"Processing complete.\nmaybe some files are not processed, you can try again")
+        print(f"Success")
+        messagebox.showinfo("Info", f"Processing complete.\nMaybe some files are not processed, you can try again")
 
 def process_image(image_path):
     img = Image.open(image_path)
-    rename_result = model.generate_content(["get a title for the image", img])
-    title_result = model.generate_content(["get a short description for the image", img])
+    rename_result = model.generate_content(["get a concise and specific title for the image", img])
+    title_result = model.generate_content(["get a short and concise description for the image", img])
     tags_result = model.generate_content(["get relevant tags delimited by semicolon for the image", img])
     
+    full_title = title_result.text
+    if '.' in full_title:
+        title = full_title.split('.')[0]
+    else:
+        title = full_title[:300]
+
+    if len(title) > 300:
+        title = title[:300]
+
     tags = tags_result.text.split(';')
     if len(tags) > 49:
         tags = tags[:49]
     limited_tags = ';'.join(tags)
 
-    if image_path.lower().endswith('.jpg') or image_path.lower().endswith('.jpeg'):
-        commands = [
-            "-overwrite_original",
-            f'-Title={title_result.text}',
+    if export_csv_enabled.get():
+        export_metadata_to_csv(image_path, title, title_result.text, limited_tags)
+
+    commands = ["-overwrite_original"]
+    
+    if image_path.lower().endswith(('.jpg', '.jpeg')):
+        commands += [
+            f'-Title={title}',
             f'-Description={title_result.text}',
-            f'-XPTitle={title_result.text}',
+            f'-XPTitle={title}',
             f'-XPComment={title_result.text}',
-            f'-XPKeywords={limited_tags}'
-        ]
-        commands.append(image_path)
-
-    elif image_path.lower().endswith('.png'):
-        commands = [
-            "-overwrite_original",
-            f'-XMP-dc:Title={title_result.text}',
+            f'-XPKeywords={limited_tags}',
+            f'-XMP-dc:Title={title}',
             f'-XMP-dc:Description={title_result.text}',
-            f'-XMP-dc:Subject={limited_tags}'
+            f'-XMP-dc:Subject={limited_tags}',
+            f'-IPTC:ObjectName={title}',
+            f'-IPTC:Caption-Abstract={title_result.text}',
         ]
-        commands.append(image_path)
 
+        iptc_keywords_parts = split_text(limited_tags, 64)
+        for part in iptc_keywords_parts:
+            commands.append(f'-IPTC:Keywords={part}')
+            
+    elif image_path.lower().endswith('.png'):
+        commands += [
+            f'-XMP-dc:Title={title}',
+            f'-XMP-dc:Description={title_result.text}',
+            f'-XMP-dc:Subject={limited_tags}',
+            f'-EXIF:XPTitle={title_result.text}',
+            f'-EXIF:XPKeywords={limited_tags}',
+            f'-EXIF:XPSubject={title_result.text}',
+            f'-IPTC:ObjectName={title_result.text}',
+            f'-IPTC:Caption-Abstract={title_result.text}',
+        ]
+        
+        iptc_keywords_parts = split_text(limited_tags, 64)
+        for part in iptc_keywords_parts:
+            commands.append(f'-IPTC:Keywords={part}')
+    
+    commands.append(image_path)
+    
     try:
         with exiftool.ExifTool() as et:
             et.execute(*commands)
@@ -186,10 +225,11 @@ def select_directory(dir_label):
         dir_label.configure(text=f"{directory_path}")
 
 def select_output_directory(output_label):
-    global output_directory
+    global output_directory, csv_file_path
     output_directory = filedialog.askdirectory()
     if output_directory:
         output_label.configure(text=f"{output_directory}")
+        csv_file_path = os.path.join(output_directory, "metadata.csv")
 
 ctk.set_appearance_mode("dark") 
 ctk.set_default_color_theme("dark-blue")  
@@ -220,7 +260,7 @@ def customize_entry(entry, show_char="*", width=250, height=30, border_color="#3
 def customize_button(button, text, command, fg_color="transparent", hover_color="#6ccc4f", corner_radius=8, font_size=12):
     button.configure(text=text, command=command, fg_color=fg_color, hover_color=hover_color, corner_radius=corner_radius, font=("Segoe UI Bold", font_size))
     button.pack(pady=10, anchor="center")
-
+       
 header_frame = ctk.CTkFrame(root, fg_color="#101010", height=700, width=100, corner_radius=1)
 header_frame.pack(fill="both", pady=(0, 10), anchor="n")
 
@@ -260,9 +300,13 @@ rename_enabled = tk.BooleanVar(value=False)
 rename_checkbox_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
 rename_checkbox_frame.pack(pady=10, anchor="center")
 
-rename_checkbox = ctk.CTkCheckBox(rename_checkbox_frame, text="Enable Rename", variable=rename_enabled,checkbox_width=14,checkbox_height=14,border_width=1,corner_radius=3,font=("Segoe UI Bold", 14),                              
-                                  fg_color="#6ccc4f")
-rename_checkbox.pack(anchor="center")
+rename_checkbox = ctk.CTkCheckBox(rename_checkbox_frame, text="Enable Rename", variable=rename_enabled, checkbox_width=14, checkbox_height=14, border_width=1,hover_color="#1d560c", corner_radius=3, font=("Segoe UI Bold", 14), fg_color="#6ccc4f")
+rename_checkbox.pack(side="left", anchor="center")
+
+export_csv_enabled = tk.BooleanVar(value=False)
+
+export_csv_checkbox = ctk.CTkCheckBox(rename_checkbox_frame, text="Export to CSV", variable=export_csv_enabled, checkbox_width=14, checkbox_height=14, border_width=1,hover_color="#1d560c", corner_radius=3, font=("Segoe UI Bold", 14), fg_color="#6ccc4f")
+export_csv_checkbox.pack(side="left", padx=20, anchor="center")
 
 label_2 = ctk.CTkLabel(header_frame, pady=(20))
 customize_main_label(label_2, "© 2024 Kadang_Kesel", font_size=9)
@@ -282,7 +326,7 @@ temperature_frame.pack(side="left", padx=10, pady=0)
 model_selection_label = ctk.CTkLabel(model_frame, text="Select Model:", font=("Segoe UI Bold", 14))
 model_selection_label.pack(pady=0,padx=(0,100), anchor="center")
 
-model_dropdown = ctk.CTkComboBox(model_frame, values=model_options, variable=selected_model,border_color="#6ccc4f",fg_color="#1d3815",button_color="#6ccc4f",button_hover_color="#1d560c")
+model_dropdown = ctk.CTkComboBox(model_frame, values=model_options, variable=selected_model, border_color="#6ccc4f", fg_color="#1d3815", button_color="#6ccc4f", button_hover_color="#1d560c")
 model_dropdown.pack(pady=20, padx=(0,100), anchor="center")
 
 temperature_label = ctk.CTkLabel(temperature_frame, text="Select Temperature:", font=("Segoe UI Bold", 14))
@@ -319,13 +363,13 @@ def open_url(url):
 social_frame = ctk.CTkFrame(frame, fg_color="transparent")
 social_frame.pack(pady=(120,0), anchor="center")
 
-instagram_button = ctk.CTkButton(social_frame,border_color="white", fg_color="transparent", hover_color="#eeeeee", border_width=1, corner_radius=8, image=ctk.CTkImage(Image.open(r'.\assets\instagram.png')), text="", width=32, height=32, command=lambda: open_url("https://www.instagram.com/hadiyuli_"))
+instagram_button = ctk.CTkButton(social_frame, border_color="white", fg_color="transparent", hover_color="#eeeeee", border_width=1, corner_radius=8, image=ctk.CTkImage(Image.open(r'.\assets\instagram.png')), text="", width=32, height=32, command=lambda: open_url("https://www.instagram.com/hadiyuli_"))
 instagram_button.pack(side="left", padx=10)
 
-paypal_button = ctk.CTkButton(social_frame,border_color="white", fg_color="transparent", hover_color="#eeeeee", border_width=1, corner_radius=8, image=ctk.CTkImage(Image.open(r'.\assets\paypal.png')), text="", width=32, height=32, command=lambda: open_url("paypal.me/KadangKesel"))
+paypal_button = ctk.CTkButton(social_frame, border_color="white", fg_color="transparent", hover_color="#eeeeee", border_width=1, corner_radius=8, image=ctk.CTkImage(Image.open(r'.\assets\paypal.png')), text="", width=32, height=32, command=lambda: open_url("paypal.me/KadangKesel"))
 paypal_button.pack(side="left", padx=10)
 
-github_button = ctk.CTkButton(social_frame,border_color="white", fg_color="transparent",hover_color="#eeeeee", border_width=1, corner_radius=8, image=ctk.CTkImage(Image.open(r'.\assets\github.png')), text="", width=32, height=32, command=lambda: open_url("https://github.com/kadangkesel"))
+github_button = ctk.CTkButton(social_frame, border_color="white", fg_color="transparent", hover_color="#eeeeee", border_width=1, corner_radius=8, image=ctk.CTkImage(Image.open(r'.\assets\github.png')), text="", width=32, height=32, command=lambda: open_url("https://github.com/kadangkesel"))
 github_button.pack(side="left", padx=10)
 
 root.mainloop()
