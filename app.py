@@ -7,6 +7,8 @@ import exiftool
 import google.generativeai as genai
 import customtkinter as ctk
 import csv
+import sys
+from termcolor import colored, cprint
 
 model = None
 directory_path = ""
@@ -50,15 +52,21 @@ def check_metadata(image_path):
         return not title or not keywords
     return True
 
-def export_metadata_to_csv(image_path, title, description, keywords):
+def export_metadata_to_csv(filename, title, description, keywords):
     global csv_file_path
     file_exists = os.path.isfile(csv_file_path)
     with open(csv_file_path, mode='a', newline='') as file:
         writer = csv.writer(file)
         if not file_exists:
             writer.writerow(["Filename", "Title", "Description", "Keywords", "Category", "Release"])  # Write header
-        writer.writerow([image_path, title, description, keywords])
+        writer.writerow([filename, title, description, keywords])  # Use the filename directly
 
+def resize_image(image_path, max_size=(2048, 2048)):
+    img = Image.open(image_path)
+    img.thumbnail(max_size, Image.LANCZOS)
+    resized_path = os.path.join(output_directory, f"temp_img_{os.path.basename(image_path)}")
+    img.save(resized_path)
+    return resized_path
 
 def process_images(api_key):
     global model, directory_path, output_directory
@@ -89,29 +97,26 @@ def process_images(api_key):
         for image_path in files:
             try:
                 process_image(image_path)
-                move_file(image_path, output_directory)
             except Exception as e:
                 error_message = str(e)
-                print(f"Processing file...")
+                print(f"Processing file...{error_message}")
                 failed_files.append(image_path)
                 continue
 
         for image_path in failed_files:
             try:
                 process_image(image_path)
-                move_file(image_path, output_directory)
             except Exception as e:
-                error_message = str(e) #For Debugging 
-                print(f"Success")
+                error_message = str(e) 
+                print(f"Success{error_message}")
 
         for image_path in files:
             if check_metadata(image_path):
                 try:
                     process_image(image_path)
-                    move_file(image_path, output_directory)
                 except Exception as e:
                     error_message = str(e)
-                    print(f"Checking metadata...")
+                    print(f"Checking metadata...{error_message}")
 
         print("Processing complete.")
         messagebox.showinfo("Info", "Processing complete.")
@@ -122,95 +127,153 @@ def process_images(api_key):
         messagebox.showinfo("Info", f"Processing complete.\nMaybe some files are not processed, you can try again")
 
 def process_image(image_path):
-    img = Image.open(image_path)
-    rename_result = model.generate_content(["get a concise and specific title for the image", img])
-    title_result = model.generate_content(["get a short and concise description for the image", img])
-    tags_result = model.generate_content(["get relevant tags delimited by semicolon for the image", img])
-    
-    full_title = title_result.text
-    if '.' in full_title:
-        title = full_title.split('.')[0]
-    else:
-        title = full_title[:300]
-
-    if len(title) > 300:
-        title = title[:300]
-
-    tags = tags_result.text.split(';')
-    if len(tags) > 49:
-        tags = tags[:49]
-    limited_tags = ';'.join(tags)
-
-    if export_csv_enabled.get():
-        export_metadata_to_csv(image_path, title, title_result.text, limited_tags)
-
-    commands = ["-overwrite_original"]
-    
-    if image_path.lower().endswith(('.jpg', '.jpeg')):
-        commands += [
-            f'-Title={title}',
-            f'-Description={title_result.text}',
-            f'-XPTitle={title}',
-            f'-XPComment={title_result.text}',
-            f'-XPKeywords={limited_tags}',
-            f'-XMP-dc:Title={title}',
-            f'-XMP-dc:Description={title_result.text}',
-            f'-XMP-dc:Subject={limited_tags}',
-            f'-IPTC:ObjectName={title}',
-            f'-IPTC:Caption-Abstract={title_result.text}',
-        ]
-
-        iptc_keywords_parts = split_text(limited_tags, 64)
-        for part in iptc_keywords_parts:
-            commands.append(f'-IPTC:Keywords={part}')
-            
-    elif image_path.lower().endswith('.png'):
-        commands += [
-            f'-XMP-dc:Title={title}',
-            f'-XMP-dc:Description={title_result.text}',
-            f'-XMP-dc:Subject={limited_tags}',
-            f'-EXIF:XPTitle={title_result.text}',
-            f'-EXIF:XPKeywords={limited_tags}',
-            f'-EXIF:XPSubject={title_result.text}',
-            f'-IPTC:ObjectName={title_result.text}',
-            f'-IPTC:Caption-Abstract={title_result.text}',
-        ]
-        
-        iptc_keywords_parts = split_text(limited_tags, 64)
-        for part in iptc_keywords_parts:
-            commands.append(f'-IPTC:Keywords={part}')
-    
-    commands.append(image_path)
-    
     try:
-        with exiftool.ExifTool() as et:
-            et.execute(*commands)
-    except exiftool.exceptions.ExifToolExecuteError as e:
-        print(f"ExifTool error: {e}")
+        cprint(f"---------------------------LOG INFORMATION-------------------------------\n","green",attrs=["blink"])
+        
+        filename = os.path.basename(image_path)
+        print(f"Processing image: {filename}")
+
+        resized_image_path = resize_image(image_path)
+        print(f"Preparing image")
+
+        with Image.open(resized_image_path) as img:
+            print(f"Opened image for processing")
+            
+            if os.path.getsize(resized_image_path) > 20 * 1024 * 1024:
+                print(f"Image size is greater than 20MB, uploading file using File API.")
+                file_ref = genai.upload_file(resized_image_path)
+                print(f"File uploaded, file reference: {file_ref}")
+            else:
+                print(f"Image size is less than or equal to 20MB, processing locally.")
+                file_ref = img
+
+            prompt_title = "Get a short and concise description for the image"
+            response_title = model.generate_content([prompt_title, file_ref])
+            title_result = response_title.text.strip()
+
+            prompt_tags = "Get relevant tags delimited by semicolon for the image"
+            response_tags = model.generate_content([prompt_tags, file_ref])
+            tags_result = response_tags.text.strip()
+
+            full_title = title_result
+            if '.' in full_title:
+                title = full_title.split('.')[0]
+            else:
+                title = full_title[:300]
+
+            if len(title) > 300:
+                title = title[:300]
+
+            print(f"Processed title")
+
+            tags = tags_result.split(';')
+            if len(tags) > 49:
+                tags = tags[:49]
+            limited_tags = ';'.join(tags)
+            print(f"Processed tags")
+
+            final_filename = os.path.basename(image_path)
+            final_image_path = image_path
+
+        if rename_enabled.get():
+            print(f"Renaming enabled.")
+            prompt_rename = "Get title for the image"
+            response_rename = model.generate_content([prompt_rename, file_ref])
+            new_filename = sanitize_filename(response_rename.text) + os.path.splitext(image_path)[1]
+            unique_new_path = get_unique_filename(output_directory, new_filename)
+            print(f"Renaming image to: {new_filename}")
+
+            shutil.move(image_path, unique_new_path)
+            final_image_path = unique_new_path  
+            final_filename = new_filename
+
+            print(f"Moved image to {unique_new_path}")
+        else:
+            unique_filename = get_unique_filename(output_directory, os.path.basename(image_path))
+            new_path = os.path.join(output_directory, unique_filename)
+            shutil.move(image_path, new_path)
+            final_image_path = new_path  
+            final_filename = unique_filename
+
+            print(f"Moved image to {new_path}")
+
+        if export_csv_enabled.get():
+            print(f"Exporting metadata to CSV.")
+            export_metadata_to_csv(final_filename, title, title_result, limited_tags)
+
+        commands = ["-overwrite_original"]
+
+        if final_image_path.lower().endswith(('.jpg', '.jpeg')):
+            print(f"Preparing to write metadata for JPG/JPEG image.")
+            commands += [
+                f'-Title={title}',
+                f'-Description={title_result}',
+                f'-XPTitle={title}',
+                f'-XPComment={title_result}',
+                f'-XPKeywords={limited_tags}',
+                f'-XMP-dc:Title={title}',
+                f'-XMP-dc:Description={title_result}',
+                f'-XMP-dc:Subject={limited_tags}',
+                f'-IPTC:ObjectName={title}',
+                f'-IPTC:Caption-Abstract={title_result}',
+            ]
+
+            iptc_keywords_parts = split_text(limited_tags, 64)
+            for part in iptc_keywords_parts:
+                commands.append(f'-IPTC:Keywords={part}')
+
+        elif final_image_path.lower().endswith('.png'):
+            print(f"Preparing to write metadata for PNG image.")
+            commands += [
+                f'-XMP-dc:Title={title}',
+                f'-XMP-dc:Description={title_result}',
+                f'-XMP-dc:Subject={limited_tags}',
+                f'-EXIF:XPTitle={title_result}',
+                f'-EXIF:XPKeywords={limited_tags}',
+                f'-EXIF:XPSubject={title_result}',
+                f'-IPTC:ObjectName={title_result}',
+                f'-IPTC:Caption-Abstract={title_result}',
+            ]
+
+            iptc_keywords_parts = split_text(limited_tags, 64)
+            for part in iptc_keywords_parts:
+                commands.append(f'-IPTC:Keywords={part}')
+
+        commands.append(final_image_path)
+
+        try:
+            with exiftool.ExifTool() as et:
+                et.execute(*commands)
+            print(f"Metadata written to image")
+        except exiftool.exceptions.ExifToolExecuteError as e:
+            print(f"ExifTool error: {e}")
+            raise
+
+    except Exception as e:
+        print(f"Error processing image {image_path}: {e}")
         raise
 
-    if rename_enabled.get():
-        new_filename = f"{rename_result.text}{os.path.splitext(image_path)[1]}"
-        new_path = os.path.join(output_directory, new_filename)
+    finally:
+        if os.path.exists(resized_image_path):
+            try:
+                os.remove(resized_image_path)
+                print(f"Removed temp image")
+            except Exception as e:
+                print(f"Error removing temp image: {e}")
+        cprint(f"-------------------------------LOG END-----------------------------------\n","green",attrs=["blink"])
 
-        if os.path.exists(new_path):
-            base_filename, extension = os.path.splitext(new_filename)
-            counter = 1
-            while os.path.exists(new_path):
-                new_filename = f"{base_filename}_{counter}{extension}"
-                new_path = os.path.join(output_directory, new_filename)
-                counter += 1
-
-        os.rename(image_path, new_path)
 
 def get_unique_filename(directory, filename):
-    base, ext = os.path.splitext(filename)
+    base, extension = os.path.splitext(filename)
     counter = 1
-    new_filename = filename
-    while os.path.exists(os.path.join(directory, new_filename)):
-        new_filename = f"{base}_{counter}{ext}"
+    unique_filename = filename
+    while os.path.exists(os.path.join(directory, unique_filename)):
+        unique_filename = f"{base}_{counter}{extension}"
         counter += 1
-    return new_filename
+    return os.path.join(directory, unique_filename)
+
+def sanitize_filename(filename):
+    return "".join(c if c.isalnum() or c in (" ", ".", "_") else "_" for c in filename)
 
 def move_file(file_path, target_directory):
     if not os.path.exists(target_directory):
