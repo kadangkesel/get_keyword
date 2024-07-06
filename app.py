@@ -207,15 +207,15 @@ def process_image(image_path):
             print(f"Preparing to write metadata for JPG/JPEG image.")
             commands += [
                 f'-Title={title}',
+                f'-EXIF:XPTitle={title}',
+                f'-XMP:Title={title}',
+                f'-IPTC:Headline={title}',
                 f'-Description={title_result}',
-                f'-XPTitle={title}',
-                f'-XPComment={title_result}',
-                f'-XPKeywords={limited_tags}',
-                f'-XMP-dc:Title={title}',
-                f'-XMP-dc:Description={title_result}',
-                f'-XMP-dc:Subject={limited_tags}',
-                f'-IPTC:ObjectName={title}',
+                f'-XMP:Description={title_result}',
+                f'-EXIF:XPSubject={title_result}',
                 f'-IPTC:Caption-Abstract={title_result}',
+                f'-EXIF:XPKeywords={limited_tags}',
+               
             ]
 
             iptc_keywords_parts = split_text(limited_tags, 64)
@@ -225,14 +225,15 @@ def process_image(image_path):
         elif final_image_path.lower().endswith('.png'):
             print(f"Preparing to write metadata for PNG image.")
             commands += [
-                f'-XMP-dc:Title={title}',
-                f'-XMP-dc:Description={title_result}',
-                f'-XMP-dc:Subject={limited_tags}',
-                f'-EXIF:XPTitle={title_result}',
-                f'-EXIF:XPKeywords={limited_tags}',
+                f'-Title={title}',
+                f'-EXIF:XPTitle={title}',
+                f'-XMP:Title={title}',
+                f'-IPTC:Headline={title}',
+                f'-Description={title_result}',
+                f'-XMP:Description={title_result}',
                 f'-EXIF:XPSubject={title_result}',
-                f'-IPTC:ObjectName={title_result}',
                 f'-IPTC:Caption-Abstract={title_result}',
+                f'-EXIF:XPKeywords={limited_tags}',
             ]
 
             iptc_keywords_parts = split_text(limited_tags, 64)
