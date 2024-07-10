@@ -8,6 +8,7 @@ import google.generativeai as genai
 import customtkinter as ctk
 import csv
 import sys
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 from termcolor import colored, cprint
 
 model = None
@@ -148,11 +149,21 @@ def process_image(image_path):
                 file_ref = img
 
             prompt_title = "Get a short and concise description for the image"
-            response_title = model.generate_content([prompt_title, file_ref])
+            response_title = model.generate_content([prompt_title, file_ref],safety_settings={
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
+            })
             title_result = response_title.text.strip()
 
             prompt_tags = "Get relevant tags delimited by semicolon for the image"
-            response_tags = model.generate_content([prompt_tags, file_ref])
+            response_tags = model.generate_content([prompt_tags, file_ref],safety_settings={
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
+            })
             tags_result = response_tags.text.strip()
 
             full_title = title_result
@@ -178,7 +189,12 @@ def process_image(image_path):
         if rename_enabled.get():
             print(f"Renaming enabled.")
             prompt_rename = "Get title for the image"
-            response_rename = model.generate_content([prompt_rename, file_ref])
+            response_rename = model.generate_content([prompt_rename, file_ref],safety_settings={
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
+            })
             new_filename = sanitize_filename(response_rename.text) + os.path.splitext(image_path)[1]
             unique_new_path = get_unique_filename(output_directory, new_filename)
             print(f"Renaming image to: {new_filename}")
