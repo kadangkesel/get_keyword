@@ -10,6 +10,8 @@ This application also edits the image metadata to include the generated descript
 - **Select Directory**: Choose a directory containing the images to be processed.
 - **Enter API Key**: Enter your Google Generative AI API Key.
 - **Process Images**: Generates descriptions and tags for each image in the selected directory and saves them as image metadata.
+- **Export CSV**: Generates CSV Quickly
+- **Rename**: Generates name by image
 
   
 ![demoapp-ezgif com-video-to-gif-converter](https://github.com/user-attachments/assets/8a0fae8d-3932-4873-bb8b-fed843f55192)
