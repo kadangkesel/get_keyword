@@ -21,7 +21,7 @@ generation_config = {
     "max_output_tokens": 8192,
     "response_mime_type": "text/plain",
 }
-model_options = ["gemini-1.5-flash", "gemini-1.5-pro"]
+model_options = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
 csv_file_path = ""
 
 def split_text(text, max_length):
